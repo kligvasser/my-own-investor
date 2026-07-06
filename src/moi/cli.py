@@ -354,6 +354,59 @@ def backtest_run(
         raise typer.Exit(code=2)
 
 
+# --------------------------------------------------------------------------- #
+# weekly / watch
+# --------------------------------------------------------------------------- #
+@app.command("weekly")
+def weekly(
+    no_llm: bool = typer.Option(False, "--no-llm", help="Numbers-only report (skip agents)."),
+    top_n: int = typer.Option(12, help="Max positions in the target portfolio."),
+) -> None:
+    """Run the full weekly pipeline: features → portfolio → suggestions → report."""
+    from moi.db import connect
+    from moi.report.weekly import run_weekly
+
+    path = run_weekly(connect(), with_llm=not no_llm, top_n=top_n)
+    typer.secho(f"Weekly report written: {path}", fg=typer.colors.GREEN)
+
+
+@app.command("watch")
+def watch() -> None:
+    """Check urgent triggers (big moves, fresh whale filings, data quality)."""
+    from moi.db import connect
+    from moi.orchestrator.watch import run_watch
+
+    alerts = run_watch(connect())
+    if alerts:
+        for a in alerts:
+            typer.secho(f"  [{a.kind}] {a.message}", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+    typer.secho("No urgent alerts.", fg=typer.colors.GREEN)
+
+
+@app.command("queue")
+def queue() -> None:
+    """Show pending suggestions (the approval queue)."""
+    from moi.db import connect
+
+    rows = (
+        connect()
+        .execute(
+            """SELECT id, week_end, action, ticker, current_weight, target_weight, confidence
+           FROM suggestions WHERE status = 'PENDING' ORDER BY created_at DESC"""
+        )
+        .fetchall()
+    )
+    if not rows:
+        typer.echo("Queue is empty.")
+        return
+    for sid, week, action, ticker, cw, tw, conf in rows:
+        typer.echo(
+            f"  {sid}  {week}  {action:5} {ticker:6} {cw or 0:.1%} -> {tw or 0:.1%}  ({conf})"
+        )
+    typer.echo(f"\n{len(rows)} pending. (approval UI arrives in Phase 4)")
+
+
 @app.command("status")
 def status() -> None:
     """Print a data-freshness board (green/red per table) and recent runs."""

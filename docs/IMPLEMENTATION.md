@@ -157,19 +157,19 @@ gate fails: iterate features/labels here — do **not** proceed and compensate w
 **Goal:** the Claude layer — seven agents (PLAN §7), weekly report, urgent watcher.
 
 ### Tasks
-- [ ] **3.1 Agent toolkit** — `src/moi/orchestrator/tools.py`: typed Python functions
+- [x] **3.1 Agent toolkit** — `src/moi/orchestrator/tools.py`: typed Python functions
   the agents may call (read-only DB queries, feature lookups, filing text fetch);
   no order-placement tool exists in this layer at all
-- [ ] **3.2 Agent definitions** — `src/moi/orchestrator/agents.py` (Claude Agent SDK):
+- [x] **3.2 Agent definitions** — `src/moi/orchestrator/agents.py` (Claude Agent SDK):
   Scanner, Quant, Fundamental, Whale-watcher, Macro/trends, Bear, PM — each with a
   focused system prompt and only the tools it needs
-- [ ] **3.3 Weekly pipeline** — `moi weekly`:
+- [x] **3.3 Weekly pipeline** — `moi weekly`:
   collect → quality gate → features → ML scores → agents (parallel analysts → Bear
   red-teams every proposed buy → PM merges) → suggestions rows (`PENDING`) +
   markdown report `reports/YYYY-WW.md` (jinja2 template, sections per PLAN §9 p.1)
-- [ ] **3.4 Text features** — Claude-scored earnings-call tone / guidance /
+- [ ] **3.4 Text features** *(deferred: needs a transcript source)* — Claude-scored earnings-call tone / guidance /
   AI-exposure (PLAN §5) cached in `news_items`/`features_weekly` so re-runs are free
-- [ ] **3.5 Urgent watcher** — `moi watch` (daily 17:30 ET via cron):
+- [x] **3.5 Urgent watcher** — `moi watch` (daily 17:30 ET via cron):
   triggers from PLAN §7 (±12% move, earnings surprise, whale filing touching a
   holding, thesis-break level, Polymarket jump >20pts); on fire → mini-report +
   Telegram/email push (`src/moi/report/notify.py`)
