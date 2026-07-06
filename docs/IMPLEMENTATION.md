@@ -117,7 +117,7 @@ nightly runs without manual fixes; each collector has tests with mocked HTTP.
 > universe implies survivorship bias in *absolute* returns (relative comparison remains fair).
 
 ### Tasks
-- [ ] **2.1 Universe screener v2** — `src/moi/features/screener.py`: automate PLAN §2
+- [ ] **2.1 Universe screener v2** *(deferred to Phase 5 tuning)* — `src/moi/features/screener.py`: automate PLAN §2
   rules (cap $300M–$30B, ADV > $5M, sector match) on top of the seed list; weekly
   snapshot into `universe` (point-in-time membership — critical for backtests)
 - [x] **2.2 Feature store** — `src/moi/features/` one module per family from PLAN §5:
@@ -135,12 +135,12 @@ nightly runs without manual fixes; each collector has tests with mocked HTTP.
     ADV bucket); baselines: equal-weight universe, SMH, SPY
   - `moi backtest run` → metrics report (IC, decile spread, Sharpe, maxDD, turnover)
     saved under `docs/backtests/YYYY-MM-DD/`
-- [ ] **2.6 Regime model v1** — `src/moi/ml/regime.py`: rules on SOX trend, rate-cut
+- [x] **2.6 Regime model v1** — `src/moi/ml/regime.py`: rules on SOX trend, rate-cut
   odds (Polymarket), credit spreads → risk-on/neutral/risk-off scalar
-- [ ] **2.7 Portfolio constructor** — `src/moi/ml/portfolio.py` (skfolio):
+- [x] **2.7 Portfolio constructor** — `src/moi/ml/portfolio.py` (skfolio):
   - constraints from `config/limits.yaml`: max 8%/name, 30%/sub-sector, 10–25
     positions, turnover penalty, ≥8-week min hold, regime-scaled gross exposure
-- [ ] **2.8 Conformal confidence** — mapie intervals on ranker output; suggestions
+- [ ] **2.8 Conformal confidence** *(deferred; composite has no fitted uncertainty — revisit if LGBM is promoted)* — mapie intervals on ranker output; suggestions
   below confidence threshold marked "weak signal"
 - [ ] **2.9 Trend/correlation miner** — `src/moi/features/trends.py`: rolling
   Polymarket/macro ↔ universe-return correlations, regime-change flags → `signals`

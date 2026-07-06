@@ -284,6 +284,25 @@ def ml_scores() -> None:
         typer.echo(f"  {i + 1:>2}. {row.ticker:6} score={row.score:.3f}")
 
 
+@ml_app.command("portfolio")
+def ml_portfolio(
+    top_n: int = typer.Option(12, help="Max positions."),
+    max_sector_share: float = typer.Option(0.30, help="Max share of book per sub-sector."),
+) -> None:
+    """Print the current target portfolio (scores + sector caps + regime scaling)."""
+    from moi.db import connect
+    from moi.ml.portfolio import build_portfolio
+
+    p = build_portfolio(connect(), top_n=top_n, max_sector_share=max_sector_share)
+    typer.echo(
+        f"target portfolio for week ending {p.week_end.date()} "
+        f"(regime: {p.regime.name}, gross {p.regime.gross:.0%}):"
+    )
+    for pos in p.positions:
+        typer.echo(f"  {pos.ticker:6} {pos.weight:6.1%}  {pos.sub_sector:28} score={pos.score:.3f}")
+    typer.echo(f"  {'CASH':6} {p.cash_weight:6.1%}")
+
+
 @backtest_app.command("run")
 def backtest_run(
     scorer: str = typer.Option("composite", help="Scorer: composite | lgbm."),
