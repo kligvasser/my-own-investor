@@ -1,0 +1,12 @@
+# Tracked institutional investors ("whales") for the 13F layer. CIK = SEC EDGAR id.
+# 13F-HR filings arrive up to 45 days after quarter end — treat as features, not signals.
+
+managers:
+  - {cik: "1067983", name: "Berkshire Hathaway (Warren Buffett)"}
+  - {cik: "1336528", name: "Pershing Square Capital (Bill Ackman)"}
+  - {cik: "1061768", name: "Baupost Group (Seth Klarman)"}
+  - {cik: "1040273", name: "Third Point (Dan Loeb)"}
+  - {cik: "1167483", name: "Tiger Global Management"}
+
+# How many past 13F quarters to keep per manager on first backfill.
+backfill_quarters: 4

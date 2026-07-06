@@ -1,0 +1,15 @@
+# Tracked Polymarket markets (Gamma API slugs). The collector resolves each slug to its
+# YES-outcome CLOB token and stores a daily probability series.
+#
+# Slugs come from the market URL: polymarket.com/event/<event>/<market-slug>.
+# Markets resolve and close over time — prune closed ones and add current ones as themes
+# evolve (Fed decisions, tariffs, AI, elections, chip-sector events).
+# Discover slugs: https://gamma-api.polymarket.com/public-search?q=<term>
+
+markets:
+  - {slug: "will-no-fed-rate-cuts-happen-in-2026", category: fed}
+  - {slug: "will-1-fed-rate-cut-happen-in-2026", category: fed}
+  - {slug: "will-the-fed-decrease-interest-rates-by-25-bps-after-the-july-2026-meeting", category: fed}
+  - {slug: "us-recession-by-end-of-2026", category: macro}
+  - {slug: "will-google-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}
+  - {slug: "will-anthropic-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}

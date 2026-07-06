@@ -1,0 +1,9 @@
+# FRED series collected weekly (requires MOI_FRED_API_KEY — free at fred.stlouisfed.org).
+
+series:
+  - {id: FEDFUNDS,      name: "Effective federal funds rate"}
+  - {id: DGS10,         name: "10-year treasury yield"}
+  - {id: T10Y2Y,        name: "10y-2y yield spread"}
+  - {id: CPIAUCSL,      name: "CPI (all urban consumers)"}
+  - {id: UNRATE,        name: "Unemployment rate"}
+  - {id: BAMLH0A0HYM2,  name: "High-yield credit spread"}
