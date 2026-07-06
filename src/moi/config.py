@@ -99,6 +99,12 @@ class Settings(BaseSettings):
     # Price backfill window in years.
     price_history_years: int = 3
 
+    # Execution limits (Phase 4). The executor refuses anything beyond these.
+    max_order_usd: float = 8_000.0
+    max_daily_usd: float = 30_000.0
+    # The executor only trades paper accounts (DU...) unless this is explicitly true.
+    allow_live: bool = False
+
 
 def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():

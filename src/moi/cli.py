@@ -355,6 +355,77 @@ def backtest_run(
 
 
 # --------------------------------------------------------------------------- #
+# approval / execution
+# --------------------------------------------------------------------------- #
+@app.command("approve")
+def approve(suggestion_id: str) -> None:
+    """Approve a pending suggestion (makes it executable)."""
+    from moi.db import connect
+    from moi.execute.queue import decide
+
+    ok = decide(connect(), suggestion_id, "APPROVED")
+    typer.secho(
+        "Approved." if ok else "Not found or not pending.",
+        fg=typer.colors.GREEN if ok else typer.colors.RED,
+    )
+
+
+@app.command("reject")
+def reject(suggestion_id: str) -> None:
+    """Reject a pending suggestion."""
+    from moi.db import connect
+    from moi.execute.queue import decide
+
+    ok = decide(connect(), suggestion_id, "REJECTED")
+    typer.secho(
+        "Rejected." if ok else "Not found or not pending.",
+        fg=typer.colors.GREEN if ok else typer.colors.RED,
+    )
+
+
+@app.command("kill")
+def kill(state: str = typer.Argument(..., help="on | off")) -> None:
+    """Set the kill switch. 'on' blocks all order placement immediately."""
+    from moi.db import connect
+    from moi.execute.executor import set_kill_switch
+
+    if state not in ("on", "off"):
+        typer.secho("state must be 'on' or 'off'", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    set_kill_switch(connect(), state == "on")
+    typer.secho(
+        f"Kill switch {state.upper()}.",
+        fg=typer.colors.RED if state == "on" else typer.colors.GREEN,
+    )
+
+
+@app.command("execute")
+def execute() -> None:
+    """Place orders for APPROVED suggestions (paper account only unless allow_live)."""
+    from moi.db import connect
+    from moi.execute.executor import SafetyError, execute_approved
+
+    try:
+        results = execute_approved(connect())
+    except (SafetyError, ConnectionError) as exc:
+        typer.secho(f"BLOCKED: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    for line in results:
+        color = typer.colors.GREEN if line.startswith("SUBMITTED") else typer.colors.YELLOW
+        typer.secho(f"  {line}", fg=color)
+
+
+@app.command("dashboard")
+def dashboard() -> None:
+    """Launch the Streamlit dashboard."""
+    import subprocess
+
+    from moi.config import ROOT
+
+    subprocess.run(["streamlit", "run", str(ROOT / "dashboard" / "app.py")], check=False)
+
+
+# --------------------------------------------------------------------------- #
 # weekly / watch
 # --------------------------------------------------------------------------- #
 @app.command("weekly")

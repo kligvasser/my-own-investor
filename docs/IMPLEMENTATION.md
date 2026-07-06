@@ -189,22 +189,22 @@ unattended.
 **Goal:** the friendly UI and the only path to execution — approve on screen, paper-trade.
 
 ### Tasks
-- [ ] **4.1 Streamlit app** — `dashboard/app.py` + `dashboard/pages/` implementing the
+- [x] **4.1 Streamlit app** — `dashboard/app.py` + `dashboard/pages/` implementing the
   8 pages from PLAN §9 (Home/report, Approval queue, Portfolio, Candidates, Whales,
   Trends, Model health, Journal); read-only against DuckDB except the queue
-- [ ] **4.2 Approval queue** — Approve / Edit size / Reject / Snooze buttons writing
+- [x] **4.2 Approval queue** — Approve / Edit size / Reject / Snooze buttons writing
   status transitions to `suggestions` (`PENDING → APPROVED/REJECTED/SNOOZED`),
   with the full card: action, size, limit price, thesis, bear-case, confidence,
   portfolio impact
-- [ ] **4.3 Executor** — `src/moi/execute/executor.py` (ib_async, paper):
+- [x] **4.3 Executor** — `src/moi/execute/executor.py` (ib_async, paper):
   - consumes only `APPROVED` rows; limit orders GTC with max-slippage guard;
     fill monitoring → `orders` + `portfolio_snapshots`
   - hard rails in code (PLAN §8): universe whitelist, max order value, max daily
     total, no short/derivatives, kill-switch flag in DB checked before every order
   - `moi execute run` (manual or post-approval trigger), full journaling
-- [ ] **4.4 Safety tests** — unit tests proving the executor refuses: non-whitelisted
+- [x] **4.4 Safety tests** — unit tests proving the executor refuses: non-whitelisted
   ticker, oversized order, unapproved suggestion, kill-switch on
-- [ ] **4.5 Report delivery** — weekly report emailed/Telegrammed with dashboard link
+- [x] **4.5 Report delivery** — weekly report emailed/Telegrammed with dashboard link
 
 ### Gate
 End-to-end demo: weekly run → suggestion appears in queue → approve in UI → paper
