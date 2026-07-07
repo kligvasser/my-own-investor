@@ -34,9 +34,12 @@ news, FRED         red-team bear cases, PM summary   caps)      → moi execute
 - **Judgment** — LLM agents (Claude Agent SDK) narrate and critique the numbers; they
   never compute them and have no trading tools. Every suggestion carries a thesis *and*
   a specific bear-case objection.
-- **Execution** — approval queue → `moi execute` places limit-GTC orders on a **paper
-  account only** (live requires an explicit config unlock, intended after months of
-  paper evaluation).
+- **Execution** — approval queue → `moi execute` places limit-GTC orders. Paper accounts
+  by default; live trading requires an explicit `MOI_ALLOW_LIVE` opt-in and still passes
+  every rail below on each order.
+- **Accountability** — the dashboard tracks the real account: per-holding P&L and
+  trailing returns (1W–1Y) vs SPY, plus a journal of every suggestion, decision, and
+  order ever made.
 
 ## Safety model
 
@@ -70,7 +73,7 @@ Full setup (IBKR gateway, API keys, nightly/weekly scheduling): **[docs/SETUP.md
 |---|---|
 | `moi collect all` | Refresh every data source (nightly job) |
 | `moi weekly [--collect]` | Full pipeline → suggestions + markdown report |
-| `moi dashboard` | Streamlit UI: report, approval queue, portfolio, whales, trends |
+| `moi dashboard` | Streamlit UI: report, approval queue, holdings performance, whales, trends |
 | `moi ml scores` / `moi ml train` | Latest ranking / composite-vs-challenger evaluation |
 | `moi backtest run` | Walk-forward backtest vs baselines (gated) |
 | `moi approve/reject <id>` | Decide a suggestion (also available in the UI) |

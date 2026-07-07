@@ -195,9 +195,10 @@ pushes an alert.
 **Streamlit** (pure Python, fastest to build; migrate to FastAPI+React later only if needed).
 Pages:
 
-1. **Home / Weekly report** — portfolio P&L, this week's narrative, action cards
+1. **Home / Weekly report** — this week's narrative and action cards
 2. **Approval queue** — pending suggestions with one-click approve/reject
-3. **Portfolio** — positions, thesis status (intact/weakening/broken), risk exposures
+3. **Portfolio** — holdings with P&L vs cost, trailing returns (1W–1Y) vs SPY,
+   indexed relative-performance charts, weights
 4. **Candidates** — ranked universe table with feature drill-down per ticker
 5. **Whales** — tracked investors' latest moves and overlap with your book
 6. **Trends** — Polymarket panels, macro regime, correlation heatmap

@@ -24,6 +24,7 @@ Edit `.env`:
 | `MOI_QUIVER_API_KEY` | optional (paid) | congressional trades |
 | `MOI_IBKR__PORT` | if not default | 7496 TWS live · 7497 TWS paper · 4001/4002 Gateway |
 | `MOI_TELEGRAM_BOT_TOKEN` / `MOI_TELEGRAM_CHAT_ID` | optional | urgent alerts |
+| `MOI_ALLOW_LIVE` | opt-in, default false | lets `moi execute` trade a live (`U…`) account; per-order/daily caps still apply |
 
 Machine-specific non-secret overrides go in `config/settings.local.yaml`
 (see `config/settings.example.yaml`). Precedence: env vars > `.env` >
@@ -82,7 +83,7 @@ Nightly data refresh — `~/Library/LaunchAgents/com.moi.collect.plist`:
 ```
 
 Weekly report — same pattern as `com.moi.weekly.plist` with
-`moi weekly >> data/weekly.log 2>&1` and:
+`moi weekly --collect >> data/weekly.log 2>&1` and:
 
 ```xml
 <key>StartCalendarInterval</key><dict>

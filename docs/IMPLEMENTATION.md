@@ -5,8 +5,20 @@ build order: phases, tasks, files, and the acceptance gate that must pass before
 next phase starts.
 
 > **Status (2026-07-07): Phases 0–4 complete, all gates passed.** Phase 5
-> (paper-trade evaluation) is the current phase — it is calendar time, not code:
+> (evaluation) is the current phase — it is calendar time, not code:
 > weekly runs, queue decisions, and live-vs-backtest tracking for 8–12 weeks.
+>
+> **Post-plan additions (2026-07-07):**
+> - Full-pipeline audit: 8 bugs fixed (13F partial-filing baseline guard,
+>   suggestion supersede, benchmark-ETF consistency, incremental prices,
+>   absolute .env path, insider digest, model_runs pollution, fill sync)
+> - Dashboard Portfolio page: per-holding P&L + trailing returns vs SPY, charts;
+>   price collector tracks held non-universe tickers
+> - Scheduling installed (launchd): nightly `collect all` 22:00,
+>   Saturday `weekly --collect` 09:00
+> - Owner opted to skip the paper stage: `MOI_ALLOW_LIVE=true` with the
+>   $8k/order + $30k/day caps as the binding rails; reports/ made private
+>   and purged from git history
 
 **Working conventions (all phases):**
 - Environment: conda via [`environment.yaml`](../environment.yaml); package installed
