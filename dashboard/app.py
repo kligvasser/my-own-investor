@@ -114,20 +114,109 @@ elif page == "Approval queue":
         st.warning(f"{n_ready} approved suggestion(s) awaiting `moi execute` (run from terminal).")
 
 elif page == "Portfolio":
-    st.header("Portfolio (latest snapshot)")
-    snap = q(
-        """SELECT ticker, quantity, avg_cost, market_value,
-                  market_value / net_liquidation AS weight
-           FROM portfolio_snapshots
-           WHERE taken_at = (SELECT max(taken_at) FROM portfolio_snapshots)
-           ORDER BY market_value DESC"""
-    )
-    if snap.empty:
-        st.info("No snapshot yet — run `moi weekly` (with TWS running) to capture one.")
+    st.header("My holdings")
+    import duckdb as _duckdb
+
+    from moi.report.performance import PERIODS, holdings_view, normalized_window
+
+    _con = _duckdb.connect(str(get_settings().db_path), read_only=True)
+    try:
+        view = holdings_view(_con)
+    finally:
+        _con.close()
+
+    if view is None:
+        st.info("No account snapshot yet — run `moi weekly` (with TWS running) to capture one.")
     else:
-        st.dataframe(snap, width="stretch")
-        taken = q("SELECT max(taken_at) AS t FROM portfolio_snapshots")["t"].iloc[0]
-        st.caption(f"snapshot taken {taken}")
+        t = view.table
+        total_pnl = float(t["pnl"].sum())
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Net liquidation", f"${view.net_liquidation:,.0f}")
+        c2.metric(
+            "Unrealized P&L",
+            f"${total_pnl:,.0f}",
+            f"{total_pnl / (t['value'].sum() - total_pnl):+.1%}",
+        )
+        c3.metric("Positions", f"{len(t)}")
+        c4.metric("Snapshot", f"{view.taken_at:%Y-%m-%d}")
+
+        st.subheader("Performance by period")
+        st.caption(
+            "Price return of the current holdings, value-weighted — ignores trades "
+            "and cash within the period."
+        )
+        perf_rows = []
+        for label, source in (
+            ("Portfolio", view.portfolio_returns),
+            ("SPY", view.benchmark_returns),
+        ):
+            perf_rows.append({"": label, **{p: source.get(p) for p in PERIODS}})
+        perf = pd.DataFrame(perf_rows).set_index("")
+        st.dataframe(perf.style.format("{:+.1%}", na_rep="—"), width="stretch")
+
+        st.subheader("Holdings")
+        show = t[
+            [
+                "ticker",
+                "qty",
+                "avg_cost",
+                "price",
+                "value",
+                "weight",
+                "pnl",
+                "pnl_pct",
+                "1W",
+                "1M",
+                "3M",
+                "1Y",
+            ]
+        ]
+        st.dataframe(
+            show.style.format(
+                {
+                    "qty": "{:.0f}",
+                    "avg_cost": "${:.2f}",
+                    "price": "${:.2f}",
+                    "value": "${:,.0f}",
+                    "weight": "{:.1%}",
+                    "pnl": "${:,.0f}",
+                    "pnl_pct": "{:+.1%}",
+                    "1W": "{:+.1%}",
+                    "1M": "{:+.1%}",
+                    "3M": "{:+.1%}",
+                    "1Y": "{:+.1%}",
+                },
+                na_rep="—",
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.subheader("Relative performance")
+        window_label = st.radio(
+            "Window", list(PERIODS), index=1, horizontal=True, label_visibility="collapsed"
+        )
+        import plotly.express as px
+
+        norm = normalized_window(view.closes, PERIODS[window_label]).reset_index()
+        long = norm.melt(id_vars="date", var_name="ticker", value_name="indexed")
+        fig = px.line(
+            long.dropna(),
+            x="date",
+            y="indexed",
+            color="ticker",
+            title=f"Indexed to 100 — last {window_label}",
+        )
+        fig.update_layout(legend={"orientation": "h", "y": -0.25}, yaxis_title=None)
+        st.plotly_chart(fig, width="stretch")
+
+        st.subheader("Weights")
+        st.plotly_chart(
+            px.bar(t.sort_values("value"), x="value", y="ticker", orientation="h").update_layout(
+                xaxis_title="market value ($)", yaxis_title=None
+            ),
+            width="stretch",
+        )
 
 elif page == "Candidates":
     st.header("Candidate ranking (latest week)")

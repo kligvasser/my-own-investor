@@ -175,6 +175,16 @@ def upsert_prices(con: duckdb.DuckDBPyConnection, rows: list[PriceRow]) -> int:
     return len(rows)
 
 
+def tracked_tickers(con: duckdb.DuckDBPyConnection) -> list[str]:
+    """Universe + benchmarks + anything actually held in the account.
+
+    Held non-universe tickers (from portfolio snapshots) get price history too so the
+    dashboard can chart the real portfolio's performance.
+    """
+    held = [r[0] for r in con.execute("SELECT DISTINCT ticker FROM portfolio_snapshots").fetchall()]
+    return sorted(set(all_tickers()) | set(held))
+
+
 def incremental_start(
     con: duckdb.DuckDBPyConnection, years: int, today: date | None = None
 ) -> date:
@@ -205,7 +215,7 @@ def collect_prices(
     Args:
         source: "yfinance" (default, no gateway needed) or "ibkr" (requires connection).
     """
-    syms = tickers if tickers is not None else all_tickers()
+    syms = tickers if tickers is not None else tracked_tickers(con)
     end = date.today()
     if full:
         start = end - timedelta(days=int(years * 365.25) + 5)
