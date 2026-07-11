@@ -78,15 +78,31 @@ def trends_digest(con: duckdb.DuckDBPyConnection) -> str:
         ("10y yield", values.get("mkt_10y_yield"), values.get("mkt_10y_yield_13w_chg")),
         ("HY credit spread", values.get("mkt_hy_spread"), values.get("mkt_hy_spread_13w_chg")),
         ("10y-2y spread", values.get("mkt_t10y2y"), values.get("mkt_t10y2y_13w_chg")),
-        ("Polymarket: fed category avg prob", values.get("mkt_pm_fed"), None),
-        ("Polymarket: recession prob", values.get("mkt_pm_macro"), None),
-        ("Polymarket: ai category avg prob", values.get("mkt_pm_ai"), None),
     ]
     for name, val, chg in pairs:
         if val is None:
             continue
         suffix = f" ({chg:+.2f})" if chg is not None else ""
         lines.append(f"- {name}: {val:.3f}{suffix}")
+
+    markets = con.execute(
+        """
+        SELECT m.category, m.question,
+               max_by(s.prob, s.ts) AS latest,
+               max_by(s.prob, s.ts) FILTER (
+                   WHERE s.ts <= current_date - INTERVAL 7 DAY) AS week_ago
+        FROM polymarket_series s
+        JOIN polymarket_markets m ON m.slug = s.slug
+        WHERE NOT m.closed
+        GROUP BY 1, 2 ORDER BY 1, 2
+        """
+    ).fetchall()
+    if markets:
+        lines.append("")
+        lines.append("Polymarket odds (latest, 7-day change):")
+        for category, question, latest, week_ago in markets:
+            delta = f", {(latest - week_ago) * 100:+.0f}pp/7d" if week_ago is not None else ""
+            lines.append(f"- [{category}] {question}: {latest:.0%}{delta}")
     return "\n".join(lines)
 
 

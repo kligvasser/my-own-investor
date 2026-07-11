@@ -402,19 +402,33 @@ def whales() -> None:
 def trends() -> None:
     st.title("Trends")
     pm = q(
-        """SELECT s.ts, s.prob, m.question FROM polymarket_series s
-           JOIN polymarket_markets m ON m.slug = s.slug ORDER BY s.ts"""
+        """SELECT s.ts, s.prob, m.question, m.category FROM polymarket_series s
+           JOIN polymarket_markets m ON m.slug = s.slug
+           WHERE NOT m.closed ORDER BY s.ts"""
     )
-    if not pm.empty:
-        latest = pm.sort_values("ts").groupby("question").last().sort_values("prob")
-        cols = st.columns(min(4, len(latest)))
-        for col, (question, row) in zip(cols, latest.iterrows(), strict=False):
-            col.metric(str(question)[:60], f"{row['prob']:.0%}")
-        fig = px.line(pm, x="ts", y="prob", color="question", title="Polymarket probabilities")
-        fig.update_layout(legend={"orientation": "h", "y": -0.2}, yaxis_tickformat=".0%")
-        st.plotly_chart(fig, width="stretch")
-    else:
+    if pm.empty:
         st.caption("No Polymarket data yet.")
+    else:
+        st.subheader("Polymarket odds")
+        st.caption("Latest probability per market; delta = change over the last 7 days.")
+        latest = pm.groupby(["category", "question"], as_index=False).last()
+        cutoff = pm["ts"].max() - pd.Timedelta(days=7)
+        week_ago = pm[pm["ts"] <= cutoff].groupby("question")["prob"].last()
+        for category, group in latest.groupby("category"):
+            st.markdown(f"**{category}**")
+            cols = st.columns(4)
+            for i, (_, row) in enumerate(group.iterrows()):
+                prev = week_ago.get(row["question"])
+                delta = f"{(row['prob'] - prev) * 100:+.0f} pp" if prev is not None else None
+                cols[i % 4].metric(str(row["question"])[:70], f"{row['prob']:.0%}", delta)
+
+        st.subheader("History")
+        categories = sorted(pm["category"].unique())
+        pick = st.multiselect("Categories", categories, default=categories)
+        sub = pm[pm["category"].isin(pick)]
+        fig = px.line(sub, x="ts", y="prob", color="question", line_dash="category")
+        fig.update_layout(legend={"orientation": "h", "y": -0.35}, yaxis_tickformat=".0%")
+        st.plotly_chart(fig, width="stretch")
 
     macro = q("SELECT series_id, date, value FROM macro_series ORDER BY date")
     if not macro.empty:

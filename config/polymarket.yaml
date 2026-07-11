@@ -7,9 +7,26 @@
 # Discover slugs: https://gamma-api.polymarket.com/public-search?q=<term>
 
 markets:
+  # Rates & macro
   - {slug: "will-no-fed-rate-cuts-happen-in-2026", category: fed}
   - {slug: "will-1-fed-rate-cut-happen-in-2026", category: fed}
   - {slug: "will-the-fed-decrease-interest-rates-by-25-bps-after-the-july-2026-meeting", category: fed}
   - {slug: "us-recession-by-end-of-2026", category: macro}
+
+  # AI race (demand side of the hardware thesis)
   - {slug: "will-google-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}
   - {slug: "will-anthropic-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}
+
+  # Energy — data-center power costs + oil-shock risk (monthly WTI: rotate the slug
+  # when the month rolls; the Hormuz market is the persistent supply-disruption proxy)
+  - {slug: "will-wti-reach-100-in-july-2026-928", category: energy}
+  - {slug: "strait-of-hormuz-traffic-returns-to-normal-by-december-31", category: energy}
+
+  # Geopolitics — Taiwan risk is existential for the semi supply chain
+  - {slug: "will-china-invade-taiwan-before-2027", category: geopolitics}
+  - {slug: "china-x-taiwan-military-clash-before-2027", category: geopolitics}
+  - {slug: "russia-x-ukraine-ceasefire-agreement-by-october-31-2026", category: geopolitics}
+
+  # US politics — 2026 midterms (policy/tariff/regulation direction)
+  - {slug: "will-the-republican-party-control-the-house-after-the-2026-midterm-elections", category: politics}
+  - {slug: "will-the-republican-party-control-the-senate-after-the-2026-midterm-elections", category: politics}
