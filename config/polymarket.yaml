@@ -16,6 +16,14 @@ markets:
   # AI race (demand side of the hardware thesis)
   - {slug: "will-google-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}
   - {slug: "will-anthropic-have-the-best-ai-model-at-the-end-of-july-2026", category: ai}
+  - {slug: "openai-announces-it-has-achieved-agi-before-2027", category: ai}
+
+  # Compute / AI-capex proxies — Polymarket has no direct GPU-price or cluster
+  # markets; NVDA #1-by-market-cap (monthly: rotate) and the OpenAI IPO complex are
+  # the highest-volume stand-ins for AI hardware demand sentiment
+  - {slug: "will-nvidia-be-the-largest-company-in-the-world-by-market-cap-on-july-31-20260624192329841", category: compute}
+  - {slug: "openai-ipo-closing-market-cap-above-1t", category: compute}
+  - {slug: "will-openai-ipo-by-september-30-2026", category: compute}
 
   # Energy — data-center power costs + oil-shock risk (monthly WTI: rotate the slug
   # when the month rolls; the Hormuz market is the persistent supply-disruption proxy)
