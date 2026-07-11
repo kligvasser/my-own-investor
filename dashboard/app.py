@@ -40,6 +40,7 @@ PAGES = [
     "Weekly report",
     "Approval queue",
     "Portfolio",
+    "Holdings X-ray",
     "Candidates",
     "Whales",
     "Trends",
@@ -214,6 +215,96 @@ elif page == "Portfolio":
         st.plotly_chart(
             px.bar(t.sort_values("value"), x="value", y="ticker", orientation="h").update_layout(
                 xaxis_title="market value ($)", yaxis_title=None
+            ),
+            width="stretch",
+        )
+
+elif page == "Holdings X-ray":
+    st.header("Holdings X-ray")
+    st.caption(
+        "How does the current book behave as a whole? Frozen-weights analysis: "
+        "today's weights applied backwards — behavior of the book, not realized P&L."
+    )
+    import duckdb as _duckdb
+    import plotly.express as px
+
+    from moi.report.performance import holdings_view
+    from moi.report.xray import (
+        contribution,
+        correlation_matrix,
+        growth_frame,
+        insights,
+        risk_table,
+    )
+
+    _con = _duckdb.connect(str(get_settings().db_path), read_only=True)
+    try:
+        view = holdings_view(_con)
+    finally:
+        _con.close()
+
+    if view is None:
+        st.info("No account snapshot yet — run `moi weekly` (with TWS running) first.")
+    else:
+        weights = dict(zip(view.table["ticker"], view.table["weight"], strict=True))
+        WINDOWS = {"3M": 63, "6M": 126, "1Y": 252, "3Y": 756}
+        label = st.radio(
+            "Window", list(WINDOWS), index=2, horizontal=True, label_visibility="collapsed"
+        )
+        days = WINDOWS[label]
+
+        risk = risk_table(view.closes, weights, days)
+        corr = correlation_matrix(view.closes, list(weights), days)
+        contrib = contribution(view.closes, weights, days)
+
+        st.subheader("What the numbers say")
+        for note in insights(weights, risk, corr, contrib):
+            st.markdown(f"- {note}")
+
+        st.subheader(f"Growth of 100 — last {label}")
+        growth = growth_frame(view.closes, weights, days).reset_index()
+        long = growth.melt(id_vars="date", var_name="series", value_name="value")
+        fig = px.line(long.dropna(), x="date", y="value", color="series")
+        fig.update_layout(legend={"orientation": "h", "y": -0.25}, yaxis_title=None)
+        st.plotly_chart(fig, width="stretch")
+
+        st.subheader("Risk profile")
+        st.caption("Daily returns over the window, annualized where applicable.")
+        st.dataframe(
+            risk.style.format(
+                {
+                    "beta": "{:.2f}",
+                    "ann_vol": "{:.0%}",
+                    "sharpe": "{:.2f}",
+                    "max_dd": "{:.0%}",
+                    "corr": "{:.2f}",
+                },
+                na_rep="—",
+            ),
+            width="stretch",
+        )
+
+        st.subheader("Contribution to portfolio return")
+        st.caption("weight * return over the window — who actually moved the book.")
+        st.plotly_chart(
+            px.bar(
+                contrib.reset_index().rename(columns={"index": "ticker", 0: "contribution"}),
+                x="contribution",
+                y="ticker",
+                orientation="h",
+            ).update_layout(xaxis_tickformat="+.1%", yaxis_title=None),
+            width="stretch",
+        )
+
+        st.subheader("Correlation between holdings")
+        st.plotly_chart(
+            px.imshow(
+                corr,
+                zmin=-1,
+                zmax=1,
+                color_continuous_scale="RdBu_r",
+                text_auto=".2f",
+                aspect="auto",
             ),
             width="stretch",
         )

@@ -199,6 +199,9 @@ Pages:
 2. **Approval queue** — pending suggestions with one-click approve/reject
 3. **Portfolio** — holdings with P&L vs cost, trailing returns (1W–1Y) vs SPY,
    indexed relative-performance charts, weights
+3b. **Holdings X-ray** — frozen-weights book behavior: growth vs SPY/QQQ/SMH,
+   beta/vol/Sharpe/drawdown per holding, return contribution, correlation heatmap,
+   computed plain-language insights (concentration, lockstep pairs, dead weight)
 4. **Candidates** — ranked universe table with feature drill-down per ticker
 5. **Whales** — tracked investors' latest moves and overlap with your book
 6. **Trends** — Polymarket panels, macro regime, correlation heatmap
