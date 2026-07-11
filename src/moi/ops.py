@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -116,16 +118,54 @@ JOBS: dict[str, JobSpec] = {
 # without it a finished job stays a zombie and os.kill(pid, 0) reports it alive.
 _PROCS: dict[int, subprocess.Popen[bytes]] = {}
 
+EXIT_MARKER = "[moi exit "  # appended to the log by the wrapper; parsed for status
+KEEP_JOB_LOGS = 30
+
+
+class JobBlocked(RuntimeError):
+    """start_job refused: another job is running or the DB is locked externally."""
+
+
+def db_lock_free() -> bool:
+    """Can we open the database read-only right now? (False → a writer holds it.)"""
+    s = get_settings()
+    if not s.db_path.exists():
+        return True  # nothing to lock yet — the job itself will create it
+    try:
+        duckdb.connect(str(s.db_path), read_only=True).close()
+    except duckdb.Error:
+        return False
+    return True
+
 
 def start_job(key: str) -> dict[str, Any]:
-    """Launch a `moi` CLI job as a detached subprocess; record it for re-attach."""
+    """Launch a `moi` CLI job as a detached subprocess; record it for re-attach.
+
+    Guarded: refuses when a tracked job is still alive (e.g. a second browser tab)
+    or when an untracked process — the nightly launchd collect, a terminal `moi run`
+    — holds the single-writer database.
+    """
     spec = JOBS[key]
+    running = current_job()
+    if running and running["running"]:
+        raise JobBlocked(f"a job is already running ({running['key']})")
+    if not db_lock_free():
+        raise JobBlocked(
+            "another process holds the database (nightly collect or a terminal run?) — "
+            "try again when it finishes"
+        )
     JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _prune_logs()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     log_path = JOB_LOG_DIR / f"{stamp}-{key}.log"
+    # Shell wrapper so the exit code lands in the log even if the dashboard restarts
+    # and loses the Popen handle. argv is constant and shell-quoted — never user input.
+    cmd = shlex.join([sys.executable, "-m", "moi", *spec.args])
+    script = f'{cmd}; rc=$?; echo; echo "{EXIT_MARKER}$rc]"; exit $rc'
     with open(log_path, "wb") as fh:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "moi", *spec.args],
+            script,
+            shell=True,
             stdout=fh,
             stderr=subprocess.STDOUT,
             cwd=str(ROOT),
@@ -138,7 +178,10 @@ def start_job(key: str) -> dict[str, Any]:
         "log": str(log_path),
         "started": datetime.now().isoformat(timespec="seconds"),
     }
-    CURRENT_JOB_FILE.write_text(json.dumps(info))
+    # Atomic replace: a concurrent reader never sees a half-written file.
+    tmp = CURRENT_JOB_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(info))
+    tmp.replace(CURRENT_JOB_FILE)
     return info
 
 
@@ -151,7 +194,23 @@ def current_job() -> dict[str, Any] | None:
     except (json.JSONDecodeError, OSError):
         return None
     info["running"] = _pid_alive(int(info.get("pid", -1)))
+    if info["running"] and _finished_by_log(info):
+        # pid was reused by an unrelated process (e.g. after a reboot) — the log's
+        # exit marker is the ground truth that the job actually finished.
+        info["running"] = False
     return info
+
+
+def cancel_job() -> bool:
+    """SIGTERM the tracked job's process group. Returns True if a signal was sent."""
+    info = current_job()
+    if not (info and info["running"]):
+        return False
+    try:
+        os.killpg(int(info["pid"]), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
 
 
 def clear_job() -> None:
@@ -159,12 +218,40 @@ def clear_job() -> None:
     CURRENT_JOB_FILE.unlink(missing_ok=True)
 
 
+def job_exit_code(info: dict[str, Any]) -> int | None:
+    """Exit code of a finished job: from our Popen handle, else the log marker."""
+    proc = _PROCS.get(int(info.get("pid", -1)))
+    if proc is not None and proc.poll() is not None:
+        return proc.returncode
+    tail = tail_log(Path(info["log"]))
+    marker = tail.rfind(EXIT_MARKER)
+    if marker != -1:
+        try:
+            return int(tail[marker + len(EXIT_MARKER) :].split("]")[0])
+        except ValueError:
+            return None
+    return None
+
+
 def tail_log(path: Path, max_bytes: int = 8_000) -> str:
-    """Last chunk of a job log, decoded leniently."""
+    """Last chunk of a job log, decoded leniently (seek — never read the whole file)."""
     if not path.exists():
         return ""
-    data = path.read_bytes()
-    return data[-max_bytes:].decode("utf-8", errors="replace")
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        size = fh.tell()
+        fh.seek(max(0, size - max_bytes))
+        return fh.read().decode("utf-8", errors="replace")
+
+
+def _finished_by_log(info: dict[str, Any]) -> bool:
+    return EXIT_MARKER in tail_log(Path(info["log"]), max_bytes=200)
+
+
+def _prune_logs() -> None:
+    logs = sorted(JOB_LOG_DIR.glob("*.log"))
+    for old in logs[: max(0, len(logs) - KEEP_JOB_LOGS)]:
+        old.unlink(missing_ok=True)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -213,11 +300,17 @@ def connection_checks() -> list[Check]:
         size_mb = s.db_path.stat().st_size / 1e6
         try:
             con = duckdb.connect(str(s.db_path), read_only=True)
-            version = con.execute("SELECT max(version) FROM schema_version").fetchone()
-            con.close()
-            v = version[0] if version else "?"
-            checks.append(Check("Database", "ok", f"{size_mb:.0f} MB · schema v{v}"))
-        except duckdb.Error:
+            try:
+                version = con.execute("SELECT max(version) FROM schema_version").fetchone()
+                v = version[0] if version else "?"
+                checks.append(Check("Database", "ok", f"{size_mb:.0f} MB · schema v{v}"))
+            except duckdb.Error:  # connects but no schema_version — never migrated
+                checks.append(
+                    Check("Database", "error", f"{size_mb:.0f} MB · no schema — run `moi db init`")
+                )
+            finally:
+                con.close()
+        except duckdb.Error:  # cannot even connect read-only → a writer holds the lock
             checks.append(
                 Check("Database", "warn", f"{size_mb:.0f} MB · busy (a job holds the write lock)")
             )

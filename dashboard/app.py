@@ -17,7 +17,7 @@ st.set_page_config(page_title="my-own-investor", page_icon="📈", layout="wide"
 
 import mission  # noqa: E402
 import views  # noqa: E402
-from common import DBBusy, execute_write, q  # noqa: E402
+from common import DBBusy, DBMissing, execute_write, q  # noqa: E402
 
 
 def _sidebar() -> None:
@@ -31,6 +31,8 @@ def _sidebar() -> None:
     except DBBusy:
         db_readable = False
         st.sidebar.caption("⏳ database busy — job running")
+    except DBMissing:
+        db_readable = False
 
     if kill_on:
         st.sidebar.error("KILL SWITCH ON — trading blocked")

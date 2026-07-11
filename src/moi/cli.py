@@ -196,7 +196,8 @@ def collect_all_cmd() -> None:
     from moi.db import connect
     from moi.ingest.runner import collect_everything
 
-    results = collect_everything(connect())
+    # Scheduled job: wait out a dashboard-launched run instead of dying on the lock.
+    results = collect_everything(connect(wait_lock_seconds=900))
     typer.echo("\ncollect all — summary")
     failed = False
     for name, outcome in results:
@@ -488,7 +489,7 @@ def run_all(
     from moi.orchestrator.watch import run_watch
     from moi.report.weekly import run_weekly
 
-    con = connect()
+    con = connect(wait_lock_seconds=300)
     typer.secho("1/3 collecting data + building report…", fg=typer.colors.CYAN)
     path = run_weekly(con, with_llm=not no_llm, top_n=top_n, collect=True)
     typer.secho(f"    report: {path}", fg=typer.colors.GREEN)
@@ -519,7 +520,9 @@ def weekly(
     from moi.db import connect
     from moi.report.weekly import run_weekly
 
-    path = run_weekly(connect(), with_llm=not no_llm, top_n=top_n, collect=collect)
+    path = run_weekly(
+        connect(wait_lock_seconds=900), with_llm=not no_llm, top_n=top_n, collect=collect
+    )
     typer.secho(f"Weekly report written: {path}", fg=typer.colors.GREEN)
 
 

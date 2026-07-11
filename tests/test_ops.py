@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -119,3 +120,44 @@ def test_source_board_merges_freshness_and_runs(db: duckdb.DuckDBPyConnection) -
     assert prices["ran at"].startswith("2026-07-10")
     # A source that never ran reports "never", not an error.
     assert by_source["news"]["last run"] == "never"
+
+
+def test_start_job_refuses_while_another_runs(job_dirs: Path) -> None:
+    ops.CURRENT_JOB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ops.CURRENT_JOB_FILE.write_text(
+        json.dumps(
+            {"pid": os.getpid(), "key": "run", "log": str(job_dirs / "x.log"), "started": "now"}
+        )
+    )
+    with pytest.raises(ops.JobBlocked, match="already running"):
+        ops.start_job("run")
+
+
+def test_exit_marker_ends_pid_reuse_false_running(job_dirs: Path) -> None:
+    """A reused pid reads alive, but the log's exit marker proves the job finished."""
+    log = job_dirs / "done.log"
+    log.write_text("all good\n[moi exit 0]\n")
+    ops.CURRENT_JOB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ops.CURRENT_JOB_FILE.write_text(
+        json.dumps({"pid": os.getpid(), "key": "run", "log": str(log), "started": "now"})
+    )
+    cur = ops.current_job()
+    assert cur is not None
+    assert cur["running"] is False
+    assert ops.job_exit_code(cur) == 0
+
+
+def test_job_exit_code_parses_failure(job_dirs: Path) -> None:
+    log = job_dirs / "fail.log"
+    log.write_text("Traceback ...\n[moi exit 2]\n")
+    info = {"pid": 99_999_999, "key": "run", "log": str(log), "started": "now"}
+    assert ops.job_exit_code(info) == 2
+
+
+def test_prune_logs_keeps_last_n(job_dirs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ops, "KEEP_JOB_LOGS", 3)
+    ops.JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    for i in range(6):
+        (ops.JOB_LOG_DIR / f"202601{i:02d}-x.log").write_text("x")
+    ops._prune_logs()
+    assert len(list(ops.JOB_LOG_DIR.glob("*.log"))) == 3

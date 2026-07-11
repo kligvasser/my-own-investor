@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from common import DBBusy, busy_note, q
+from common import DBBusy, DBMissing, busy_note, missing_note, q
 
 from moi import ops
 from moi.config import ROOT
@@ -69,6 +69,8 @@ def _health_row() -> None:
         c5.metric("Data sources fresh", f"{fresh[0]}/{fresh[1]}")
     except DBBusy:
         c2.metric("Database", "busy")
+    except DBMissing:
+        c2.metric("Database", "not created")
 
 
 def q_freshness_counts() -> tuple[int, int]:
@@ -94,21 +96,44 @@ def _command_deck() -> None:
             f"**{spec.label}** running (`moi {' '.join(spec.args)}`, started {info['started']})"
         )
         _live_log(Path(info["log"]))
+        c1, c2 = st.columns([1, 4])
+        if c1.button("Cancel job"):
+            ops.cancel_job()
+            st.rerun()
+        with c2.expander("Job stuck? (e.g. stale after a reboot)"):
+            if st.button("Force clear tracker", help="Clears tracking only — kills nothing."):
+                ops.clear_job()
+                st.rerun()
         return
 
     if info:  # finished, awaiting dismissal
         spec = ops.JOBS[info["key"]]
         tail = ops.tail_log(Path(info["log"]))
-        failed = any(marker in tail for marker in ("Traceback", "BLOCKED", "ERROR"))
-        (st.warning if failed else st.success)(
-            f"**{spec.label}** finished{' — check the log below' if failed else ''}."
-        )
-        with st.expander("Job log", expanded=failed):
+        rc = ops.job_exit_code(info)
+        if rc == 0:
+            st.success(f"**{spec.label}** finished OK.")
+        elif info["key"] == "watch" and rc == 1:
+            st.warning(f"**{spec.label}** finished — urgent alerts found (see log).")
+        elif rc is None:
+            st.warning(f"**{spec.label}** finished — exit status unknown, check the log.")
+        else:
+            st.error(f"**{spec.label}** failed (exit {rc}) — check the log.")
+        with st.expander("Job log", expanded=rc != 0):
             st.code(tail or "(empty)", language="text")
         if st.button("Dismiss", type="primary"):
             ops.clear_job()
             st.rerun()
         return
+
+    def _launch(key: str) -> None:
+        try:
+            ops.start_job(key)
+        except ops.JobBlocked as exc:
+            st.session_state["job_blocked_msg"] = str(exc)
+        st.rerun()
+
+    if msg := st.session_state.pop("job_blocked_msg", None):
+        st.warning(f"Not started: {msg}")
 
     order = ["run", "collect", "report", "report-fast"]
     cols = st.columns(4)
@@ -118,8 +143,7 @@ def _command_deck() -> None:
             if st.button(
                 spec.label, type="primary" if key == "run" else "secondary", width="stretch"
             ):
-                ops.start_job(key)
-                st.rerun()
+                _launch(key)
             st.caption(spec.blurb)
 
     utility = ["watch", "orders-sync", "ibkr-ping", "ml-train"]
@@ -128,13 +152,12 @@ def _command_deck() -> None:
         spec = ops.JOBS[key]
         with col:
             if st.button(spec.label, width="stretch"):
-                ops.start_job(key)
-                st.rerun()
+                _launch(key)
             st.caption(spec.blurb)
 
     st.caption(
         "One job at a time — the database is single-writer. Jobs keep running even if "
-        "you close this page; logs land in `data/joblogs/`."
+        "you close this page; logs land in `data/joblogs/` (last 30 kept)."
     )
 
 
@@ -166,6 +189,9 @@ def _source_board() -> None:
     except DBBusy:
         busy_note()
         return
+    except DBMissing:
+        missing_note()
+        return
     board = pd.DataFrame(rows)
     board["freshness"] = board["freshness"].map(lambda s: f"{_FRESH_ICON.get(s, '⚪')} {s}")
     st.dataframe(board, width="stretch", hide_index=True)
@@ -178,12 +204,17 @@ def _run_history() -> None:
             """SELECT started_at, job, status, rows_written, detail
                FROM run_log ORDER BY started_at DESC LIMIT 12"""
         )
-    except DBBusy:
+    except (DBBusy, DBMissing):
         return
     if runs.empty:
         st.caption("No pipeline runs recorded yet.")
         return
     runs["status"] = runs["status"].map(
-        lambda s: {"ok": "✅ ok", "error": "❌ error", "running": "🔄 running"}.get(s, s)
+        lambda s: {
+            "ok": "✅ ok",
+            "partial": "🔶 partial",
+            "error": "❌ error",
+            "running": "🔄 running",
+        }.get(s, s)
     )
     st.dataframe(runs, width="stretch", hide_index=True)

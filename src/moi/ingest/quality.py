@@ -100,12 +100,12 @@ def price_gaps(con: duckdb.DuckDBPyConnection, max_lag_days: int = 5) -> list[Pr
     rows = con.execute(
         """WITH per AS (
                SELECT ticker, max(date) AS latest FROM prices_daily GROUP BY ticker
-           ), glob AS (SELECT max(date) AS m FROM prices_daily)
-           SELECT u.ticker, per.latest, coalesce(glob.m - per.latest, 99999) AS lag
+           ), overall AS (SELECT max(date) AS m FROM prices_daily)
+           SELECT u.ticker, per.latest, coalesce(overall.m - per.latest, 99999) AS lag
            FROM universe u
            LEFT JOIN per ON per.ticker = u.ticker
-           CROSS JOIN glob
-           WHERE u.active AND (per.latest IS NULL OR glob.m - per.latest > ?)
+           CROSS JOIN overall
+           WHERE u.active AND (per.latest IS NULL OR overall.m - per.latest > ?)
            ORDER BY lag DESC""",
         [max_lag_days],
     ).fetchall()

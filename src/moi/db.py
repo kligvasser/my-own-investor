@@ -85,16 +85,35 @@ def scalar(con: duckdb.DuckDBPyConnection, sql: str, params: list[object] | None
     return row[0] if row else None
 
 
-def connect(db_path: Path | None = None, *, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+def connect(
+    db_path: Path | None = None,
+    *,
+    read_only: bool = False,
+    wait_lock_seconds: float = 0,
+) -> duckdb.DuckDBPyConnection:
     """Open (creating if needed) the DuckDB database and apply pending migrations.
 
     Args:
         db_path: Override the configured DB path (used by tests).
         read_only: Open read-only (skips migration; DB must already exist).
+        wait_lock_seconds: DuckDB is single-writer; scheduled jobs pass a budget here
+            to wait for another process (e.g. a dashboard-launched run) to release the
+            lock instead of dying instantly. 0 = fail fast (interactive commands).
     """
+    import time
+
     path = db_path or get_settings().db_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(path), read_only=read_only)
+    deadline = time.monotonic() + wait_lock_seconds
+    while True:
+        try:
+            con = duckdb.connect(str(path), read_only=read_only)
+            break
+        except duckdb.IOException:
+            if time.monotonic() >= deadline:
+                raise
+            log.warning("db_locked_waiting", path=str(path))
+            time.sleep(15)
     if not read_only:
         migrate(con)
     return con

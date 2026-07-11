@@ -90,7 +90,7 @@ def risk_table(
 
 
 def contribution(closes: pd.DataFrame, weights: dict[str, float], window_days: int) -> pd.Series:
-    """Additive contribution: weight × daily return, summed over the window.
+    """Additive contribution: weight times daily return, summed over the window.
 
     Uses the same daily-return matrix as :func:`portfolio_returns`, so contributions
     sum to the portfolio's cumulative arithmetic return — and a holding with partial

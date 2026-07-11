@@ -22,10 +22,17 @@ class DBBusy(Exception):
     """The database is locked by a running pipeline job."""
 
 
+class DBMissing(Exception):
+    """The database file does not exist yet (fresh install)."""
+
+
 @contextmanager
 def read_connection() -> Iterator[duckdb.DuckDBPyConnection]:
+    db_path = get_settings().db_path
+    if not db_path.exists():
+        raise DBMissing(str(db_path))
     try:
-        con = duckdb.connect(str(get_settings().db_path), read_only=True)
+        con = duckdb.connect(str(db_path), read_only=True)
     except duckdb.Error as exc:
         raise DBBusy(str(exc)) from exc
     try:
@@ -59,8 +66,12 @@ def busy_note() -> None:
     )
 
 
+def missing_note() -> None:
+    st.info("No database yet — run `moi db init`, then **Collect data** on Mission control.")
+
+
 def page(fn: Callable[[], None]) -> Callable[[], None]:
-    """Wrap a page renderer so a locked database degrades to a notice."""
+    """Wrap a page renderer so a locked or missing database degrades to a notice."""
 
     @wraps(fn)
     def wrapper() -> None:
@@ -68,5 +79,7 @@ def page(fn: Callable[[], None]) -> Callable[[], None]:
             fn()
         except DBBusy:
             busy_note()
+        except DBMissing:
+            missing_note()
 
     return wrapper

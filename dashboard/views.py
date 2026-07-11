@@ -7,7 +7,7 @@ import json
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from common import execute_write, page, q, read_connection
+from common import DBBusy, execute_write, page, q, read_connection
 
 from moi.config import ROOT
 
@@ -61,36 +61,51 @@ def approval_queue() -> None:
                     delta_usd = (r["target_weight"] - r["current_weight"]) * net_liq
                     if abs(delta_usd) >= 50:
                         size = f" · ≈ ${abs(delta_usd):,.0f} {'buy' if delta_usd > 0 else 'sell'}"
-                st.caption(
-                    f"{r['current_weight']:.1%} → {r['target_weight']:.1%}{size} · "
-                    f"score {r['score'] if pd.notna(r['score']) else '—'} · {r['confidence']}"
-                )
+                cw = f"{r['current_weight']:.1%}" if pd.notna(r["current_weight"]) else "—"
+                tw = f"{r['target_weight']:.1%}" if pd.notna(r["target_weight"]) else "—"
+                score = f"{r['score']:.3f}" if pd.notna(r["score"]) else "—"
+                st.caption(f"{cw} → {tw}{size} · score {score} · {r['confidence']}")
                 if r["thesis"]:
                     st.markdown(f"**Thesis:** {r['thesis']}")
                 if r["bear_case"]:
                     st.markdown(f"**Bear case:** {r['bear_case']}")
             with right:
-                from moi.execute.queue import decide
-
                 sid = r["id"]
-                if st.button("✅ Approve", key=f"a{sid}", width="stretch"):
-                    execute_write(lambda con, s=sid: decide(con, s, "APPROVED"))
-                    st.rerun()
-                if st.button("❌ Reject", key=f"r{sid}", width="stretch"):
-                    execute_write(lambda con, s=sid: decide(con, s, "REJECTED"))
-                    st.rerun()
-                if st.button("💤 Snooze", key=f"s{sid}", width="stretch"):
-                    execute_write(lambda con, s=sid: decide(con, s, "SNOOZED"))
-                    st.rerun()
+                _decide_button("✅ Approve", f"a{sid}", sid, "APPROVED")
+                _decide_button("❌ Reject", f"r{sid}", sid, "REJECTED")
+                _decide_button("💤 Snooze", f"s{sid}", sid, "SNOOZED")
 
-    approved = q(
-        """SELECT count(*) AS n FROM suggestions s WHERE s.status = 'APPROVED'
+    ready = q(
+        """SELECT id, action, ticker, target_weight FROM suggestions s
+           WHERE s.status = 'APPROVED'
            AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.suggestion_id = s.id
-                           AND o.status != 'error')"""
+                           AND o.status != 'error')
+           ORDER BY decided_at DESC"""
     )
-    n_ready = int(approved["n"].iloc[0])
-    if n_ready:
-        st.warning(f"{n_ready} approved suggestion(s) awaiting `moi execute` (run from terminal).")
+    if not ready.empty:
+        st.warning(
+            f"{len(ready)} approved suggestion(s) awaiting `moi execute` (run from terminal). "
+            "Revocable until an order is sent:"
+        )
+        for _, r in ready.iterrows():
+            c1, c2 = st.columns([4, 1])
+            tw = f" → {r['target_weight']:.1%}" if pd.notna(r["target_weight"]) else ""
+            c1.markdown(f"**{r['action']} {r['ticker']}**{tw}")
+            with c2:
+                _decide_button("↩ Revoke", f"rev{r['id']}", r["id"], "REJECTED")
+
+
+def _decide_button(label: str, widget_key: str, sid: str, decision: str) -> None:
+    """Queue-decision button that survives a locked DB (asks to retry, keeps the click)."""
+    from moi.execute.queue import decide
+
+    if st.button(label, key=widget_key, width="stretch"):
+        try:
+            execute_write(lambda con: decide(con, sid, decision))
+        except DBBusy:
+            st.warning("Database busy (job running) — try again in a moment.")
+            return
+        st.rerun()
 
 
 # --------------------------------------------------------------------------- #
@@ -404,9 +419,9 @@ def trends() -> None:
     macro = q("SELECT series_id, date, value FROM macro_series ORDER BY date")
     if not macro.empty:
         st.subheader("Macro (FRED)")
-        pick = st.multiselect(
-            "FRED series", sorted(macro["series_id"].unique()), default=["T10Y2Y", "BAMLH0A0HYM2"]
-        )
+        options = sorted(macro["series_id"].unique())
+        wanted = [s for s in ("T10Y2Y", "BAMLH0A0HYM2") if s in options]
+        pick = st.multiselect("FRED series", options, default=wanted or options[:2])
         sub = macro[macro["series_id"].isin(pick)]
         st.plotly_chart(px.line(sub, x="date", y="value", color="series_id"), width="stretch")
 

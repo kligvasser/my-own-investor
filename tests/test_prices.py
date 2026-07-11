@@ -64,7 +64,8 @@ def test_diverged_tickers_detects_retro_adjustment(db) -> None:
     from moi.ingest.prices import diverged_tickers
 
     db.execute(
-        "INSERT INTO prices_daily (ticker, date, close, source) VALUES ('X', '2026-07-01', 100, 't')"
+        "INSERT INTO prices_daily (ticker, date, close, source) "
+        "VALUES ('X', '2026-07-01', 100, 't')"
     )
     db.execute(
         "INSERT INTO prices_daily (ticker, date, close, source) VALUES ('Y', '2026-07-01', 50, 't')"
