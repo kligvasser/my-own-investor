@@ -430,6 +430,95 @@ def trends() -> None:
         fig.update_layout(legend={"orientation": "h", "y": -0.35}, yaxis_tickformat=".0%")
         st.plotly_chart(fig, width="stretch")
 
+    with st.expander("🗂 Manage tracked markets (rotate expiring slugs, search & add)"):
+        _manage_markets()
+
+
+def _manage_markets() -> None:
+    """Rotate date-dependent Polymarket slugs without touching YAML by hand."""
+    from datetime import datetime, timedelta
+
+    from moi.ingest.polymarket import (
+        add_market_to_config,
+        collect_single_market,
+        config_slugs,
+        remove_market_from_config,
+        search_markets,
+    )
+
+    tracked = config_slugs()
+    rows = q(
+        """SELECT m.slug, m.question, m.category, m.closed, m.end_date,
+                  max_by(s.prob, s.ts) AS prob
+           FROM polymarket_markets m LEFT JOIN polymarket_series s USING (slug)
+           GROUP BY ALL ORDER BY m.closed DESC, m.end_date NULLS LAST"""
+    )
+    rows = rows[rows["slug"].isin(tracked)]
+
+    st.markdown("**Tracked** — 🔴 closed (rotate) · 🟠 ends within 7 days · 🟢 open")
+    soon = datetime.now() + timedelta(days=7)
+    for _, r in rows.iterrows():
+        if r["closed"]:
+            dot, note = "🔴", "closed"
+        elif pd.notna(r["end_date"]) and r["end_date"] < soon:
+            dot, note = "🟠", f"ends {r['end_date']:%b %d}"
+        else:
+            dot = "🟢"
+            note = f"ends {r['end_date']:%b %d}" if pd.notna(r["end_date"]) else "open-ended"
+        c1, c2 = st.columns([6, 1])
+        prob = f"{r['prob']:.0%}" if pd.notna(r["prob"]) else "—"
+        c1.markdown(
+            f"{dot} **{prob}** · {r['question'] or r['slug']}  \n"
+            f"<small>{r['category']} · {note}</small>",
+            unsafe_allow_html=True,
+        )
+        if c2.button("Remove", key=f"pmrm{r['slug']}"):
+            remove_market_from_config(str(r["slug"]))
+            st.rerun()
+
+    st.divider()
+    st.markdown("**Find a market** (Gamma search, open markets only, sorted by volume)")
+    c1, c2 = st.columns([4, 1])
+    query = c1.text_input(
+        "Search", placeholder="e.g. nvidia largest company august", label_visibility="collapsed"
+    )
+    if c2.button("Search", width="stretch") and query:
+        try:
+            st.session_state["pm_results"] = search_markets(query)
+        except Exception as exc:  # network — show, don't crash the page
+            st.error(f"Search failed: {exc}")
+
+    for res in st.session_state.get("pm_results", []):
+        if res["slug"] in tracked:
+            continue
+        c1, c2, c3 = st.columns([5, 2, 1])
+        ends = f" · ends {res['end_date']:%b %d}" if res["end_date"] else ""
+        c1.markdown(
+            f"{res['question']}  \n<small>${res['volume'] / 1e6:.1f}M volume{ends} · "
+            f"`{res['slug'][:60]}`</small>",
+            unsafe_allow_html=True,
+        )
+        existing = sorted({str(c) for c in rows["category"].dropna()} | {"other"})
+        category = c2.selectbox(
+            "category", existing, key=f"pmcat{res['slug']}", label_visibility="collapsed"
+        )
+        if c3.button("Add", key=f"pmadd{res['slug']}", width="stretch"):
+            try:
+                add_market_to_config(res["slug"], category)
+            except ValueError as exc:
+                st.error(str(exc))
+                continue
+
+            def _fetch_now(con, s=res["slug"], c=category) -> None:
+                collect_single_market(con, s, c)
+
+            try:  # fetch the series right away so it shows up without waiting for nightly
+                execute_write(_fetch_now)
+            except Exception:
+                st.warning("Added — first collection deferred to the next collect run.")
+            else:
+                st.rerun()
+
     macro = q("SELECT series_id, date, value FROM macro_series ORDER BY date")
     if not macro.empty:
         st.subheader("Macro (FRED)")

@@ -8,12 +8,15 @@ prices-history endpoint. Stored as ``polymarket_markets`` + ``polymarket_series`
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import duckdb
+import httpx
 import yaml
 
 from moi.config import CONFIG_DIR
@@ -41,8 +44,21 @@ def load_tracked_markets(path: Path | None = None) -> list[TrackedMarket]:
     ]
 
 
+def parse_end_date(raw: object) -> datetime | None:
+    """Gamma endDate (ISO, usually Z-suffixed) → naive UTC timestamp, or None."""
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(UTC).replace(tzinfo=None)
+    return dt
+
+
 def parse_market_metadata(payload: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Extract (question, yes_token_id, closed) from a Gamma /markets?slug= response."""
+    """Extract (question, yes_token_id, closed, end_date) from a Gamma /markets?slug=."""
     if not payload:
         return None
     market = payload[0]
@@ -64,6 +80,7 @@ def parse_market_metadata(payload: list[dict[str, Any]]) -> dict[str, Any] | Non
         "question": market.get("question"),
         "token_id": yes_token,
         "closed": bool(market.get("closed", False)),
+        "end_date": parse_end_date(market.get("endDate")),
     }
 
 
@@ -84,13 +101,15 @@ def upsert_market(
 ) -> None:
     con.execute(
         """
-        INSERT INTO polymarket_markets (slug, question, category, token_id, closed, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO polymarket_markets
+            (slug, question, category, token_id, closed, end_date, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (slug) DO UPDATE SET
             question = excluded.question,
             category = excluded.category,
             token_id = excluded.token_id,
             closed = excluded.closed,
+            end_date = excluded.end_date,
             updated_at = excluded.updated_at
         """,
         [
@@ -99,6 +118,7 @@ def upsert_market(
             market.category,
             meta.get("token_id"),
             meta.get("closed"),
+            meta.get("end_date"),
             datetime.now(),
         ],
     )
@@ -119,6 +139,34 @@ def upsert_series(
     return len(points)
 
 
+def _collect_market(
+    con: duckdb.DuckDBPyConnection, client: httpx.Client, market: TrackedMarket
+) -> int:
+    """Refresh one market's metadata + probability series. Returns points written."""
+    resp = client.get(GAMMA_URL, params={"slug": market.slug})
+    resp.raise_for_status()
+    meta = parse_market_metadata(resp.json())
+    if meta is None:
+        log.warning("polymarket_slug_not_found", slug=market.slug)
+        return 0
+    upsert_market(con, market, meta)
+    if not meta.get("token_id"):
+        log.warning("polymarket_no_token", slug=market.slug)
+        return 0
+    hist = client.get(
+        CLOB_HISTORY_URL,
+        params={
+            "market": meta["token_id"],
+            "interval": "max",
+            "fidelity": 1440,  # daily resolution
+        },
+    )
+    hist.raise_for_status()
+    written = upsert_series(con, market.slug, parse_history(hist.json()))
+    log.info("polymarket_stored", slug=market.slug, points=written)
+    return written
+
+
 def collect_polymarket(con: duckdb.DuckDBPyConnection, config_path: Path | None = None) -> int:
     """Refresh metadata and daily probability series for all tracked markets."""
     markets = load_tracked_markets(config_path)
@@ -127,32 +175,110 @@ def collect_polymarket(con: duckdb.DuckDBPyConnection, config_path: Path | None 
         with http.client(timeout=30) as client:
             for market in markets:
                 try:
-                    resp = client.get(GAMMA_URL, params={"slug": market.slug})
-                    resp.raise_for_status()
-                    meta = parse_market_metadata(resp.json())
-                    if meta is None:
-                        log.warning("polymarket_slug_not_found", slug=market.slug)
-                        continue
-                    upsert_market(con, market, meta)
-                    if not meta.get("token_id"):
-                        log.warning("polymarket_no_token", slug=market.slug)
-                        continue
-                    hist = client.get(
-                        CLOB_HISTORY_URL,
-                        params={
-                            "market": meta["token_id"],
-                            "interval": "max",
-                            "fidelity": 1440,  # daily resolution
-                        },
-                    )
-                    hist.raise_for_status()
-                    points = parse_history(hist.json())
-                    written = upsert_series(con, market.slug, points)
-                    total += written
-                    log.info("polymarket_stored", slug=market.slug, points=written)
+                    total += _collect_market(con, client, market)
                 except Exception as exc:
                     run.add_failures()
                     log.warning("polymarket_failed", slug=market.slug, error=str(exc))
         run.add_rows(total)
         run.detail = f"markets={len(markets)}"
     return total
+
+
+def collect_single_market(con: duckdb.DuckDBPyConnection, slug: str, category: str) -> int:
+    """Fetch one market immediately (dashboard 'Add market' path). Raises on failure."""
+    with http.client(timeout=30) as client:
+        return _collect_market(con, client, TrackedMarket(slug=slug, category=category))
+
+
+# --------------------------------------------------------------------------- #
+# Market discovery + config management (dashboard "Manage tracked markets")
+# --------------------------------------------------------------------------- #
+SEARCH_URL = "https://gamma-api.polymarket.com/public-search"
+
+_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+_CATEGORY_RE = re.compile(r"^[a-z0-9_-]{1,24}$")
+
+
+def search_markets(query: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    """Search Gamma for OPEN markets; returns dicts sorted by volume (desc).
+
+    Note: search sometimes returns a canonical slug that does not resolve on
+    /markets?slug= — validation happens at add time (`slug_resolves`).
+    """
+    headers = {"Accept-Encoding": "gzip", "User-Agent": "moi/0.1"}  # brotli workaround
+    with http.client(timeout=20, headers=headers) as client:
+        resp = client.get(SEARCH_URL, params={"q": query, "limit_per_type": 8})
+        resp.raise_for_status()
+        events = resp.json().get("events") or []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for ev in events:
+        for m in ev.get("markets") or []:
+            slug = m.get("slug")
+            if not slug or slug in seen or m.get("closed"):
+                continue
+            seen.add(slug)
+            out.append(
+                {
+                    "slug": slug,
+                    "question": m.get("question"),
+                    "volume": float(m.get("volumeNum") or 0),
+                    "end_date": parse_end_date(m.get("endDate")),
+                }
+            )
+    out.sort(key=lambda r: -r["volume"])
+    return out[:limit]
+
+
+def slug_resolves(slug: str) -> bool:
+    """Does /markets?slug= return this market? (search slugs are not always canonical)."""
+    headers = {"Accept-Encoding": "gzip", "User-Agent": "moi/0.1"}
+    with http.client(timeout=20, headers=headers) as client:
+        resp = client.get(GAMMA_URL, params={"slug": slug})
+        resp.raise_for_status()
+        return bool(resp.json())
+
+
+def config_slugs(path: Path | None = None) -> set[str]:
+    return {m.slug for m in load_tracked_markets(path)}
+
+
+def add_market_to_config(
+    slug: str,
+    category: str,
+    path: Path | None = None,
+    validate: Callable[[str], bool] | None = None,
+) -> None:
+    """Append a market to config/polymarket.yaml (text-level edit preserves comments).
+
+    Validates the slug against Gamma first — a search result's canonical slug does not
+    always resolve; date-suffixed slugs do. Raises ValueError on any problem.
+    """
+    path = path or CONFIG_DIR / "polymarket.yaml"
+    if not _SLUG_RE.match(slug):
+        raise ValueError(f"invalid slug: {slug!r}")
+    if not _CATEGORY_RE.match(category):
+        raise ValueError(f"invalid category: {category!r} (lowercase letters/digits/-/_)")
+    if slug in config_slugs(path):
+        raise ValueError(f"{slug} is already tracked")
+    if not (validate or slug_resolves)(slug):
+        raise ValueError(
+            f"{slug} does not resolve on the Gamma markets endpoint — open the market "
+            "on polymarket.com and copy the full slug from the URL (often date-suffixed)"
+        )
+    text = path.read_text().rstrip("\n")
+    # `markets:` is the last top-level key, so appending keeps valid YAML.
+    path.write_text(f'{text}\n  - {{slug: "{slug}", category: {category}}}\n')
+    log.info("polymarket_market_added", slug=slug, category=category)
+
+
+def remove_market_from_config(slug: str, path: Path | None = None) -> bool:
+    """Drop a market's line from the config. Collected history stays in the DB."""
+    path = path or CONFIG_DIR / "polymarket.yaml"
+    lines = path.read_text().splitlines(keepends=True)
+    kept = [ln for ln in lines if f'"{slug}"' not in ln]
+    if len(kept) == len(lines):
+        return False
+    path.write_text("".join(kept))
+    log.info("polymarket_market_removed", slug=slug)
+    return True

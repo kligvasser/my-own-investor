@@ -24,6 +24,7 @@ RESEND_AFTER = timedelta(days=3)  # cool-down before an identical alert repeats
 @dataclass(frozen=True)
 class Alert:
     kind: str  # big_move | whale_filing | data_quality | stuck_order | stale_approval
+    #           | market_rotation
     message: str
     key: str = ""  # dedup key within kind (defaults to the message)
 
@@ -116,6 +117,47 @@ def execution_alerts(con: duckdb.DuckDBPyConnection) -> list[Alert]:
     return alerts
 
 
+def market_rotation_alerts(
+    con: duckdb.DuckDBPyConnection, tracked: set[str] | None = None
+) -> list[Alert]:
+    """Tracked Polymarket markets that closed or expire soon — rotate the slug.
+
+    Date-dependent markets ("… by July 31") resolve monthly; a closed slug silently
+    stops producing signal until someone swaps it in config/polymarket.yaml (or via
+    the dashboard's Trends → Manage tracked markets).
+    """
+    if tracked is None:
+        from moi.ingest.polymarket import load_tracked_markets
+
+        try:
+            tracked = {m.slug for m in load_tracked_markets()}
+        except Exception:  # unreadable config — not this trigger's problem
+            return []
+    alerts: list[Alert] = []
+    now = datetime.now()
+    rows = con.execute("SELECT slug, question, closed, end_date FROM polymarket_markets").fetchall()
+    for slug, question, closed, end_date in rows:
+        if slug not in tracked:
+            continue
+        if closed:
+            alerts.append(
+                Alert(
+                    "market_rotation",
+                    f"polymarket market closed — rotate the slug: {question or slug}",
+                    key=f"closed:{slug}",
+                )
+            )
+        elif end_date is not None and end_date < now + timedelta(days=3):
+            alerts.append(
+                Alert(
+                    "market_rotation",
+                    f"polymarket market ends {end_date:%Y-%m-%d}: {question or slug}",
+                    key=f"expiring:{slug}",
+                )
+            )
+    return alerts
+
+
 def _fresh(con: duckdb.DuckDBPyConnection, alerts: list[Alert]) -> list[Alert]:
     """Drop alerts already sent within the cool-down; journal the ones that pass."""
     out: list[Alert] = []
@@ -142,7 +184,8 @@ def run_watch(con: duckdb.DuckDBPyConnection) -> list[Alert]:
         big_move_alerts(con)
         + whale_filing_alerts(con)
         + data_quality_alerts(con)
-        + execution_alerts(con),
+        + execution_alerts(con)
+        + market_rotation_alerts(con),
     )
     if alerts:
         from moi.report.notify import send
