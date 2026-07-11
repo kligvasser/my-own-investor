@@ -404,6 +404,37 @@ def dashboard() -> None:
 # --------------------------------------------------------------------------- #
 # weekly / watch
 # --------------------------------------------------------------------------- #
+@app.command("run")
+def run_all(
+    no_llm: bool = typer.Option(False, "--no-llm", help="Numbers-only report (skip agents)."),
+    top_n: int = typer.Option(12, help="Max positions in the target portfolio."),
+) -> None:
+    """One-shot pipeline: collect all data → weekly report → urgent triggers → queue."""
+    from moi.db import connect, scalar
+    from moi.orchestrator.watch import run_watch
+    from moi.report.weekly import run_weekly
+
+    con = connect()
+    typer.secho("1/3 collecting data + building report…", fg=typer.colors.CYAN)
+    path = run_weekly(con, with_llm=not no_llm, top_n=top_n, collect=True)
+    typer.secho(f"    report: {path}", fg=typer.colors.GREEN)
+
+    typer.secho("2/3 checking urgent triggers…", fg=typer.colors.CYAN)
+    alerts = run_watch(con)
+    if alerts:
+        for a in alerts:
+            typer.secho(f"    [{a.kind}] {a.message}", fg=typer.colors.YELLOW)
+    else:
+        typer.echo("    no urgent alerts")
+
+    pending = scalar(con, "SELECT count(*) FROM suggestions WHERE status = 'PENDING'")
+    typer.secho("3/3 done.", fg=typer.colors.CYAN)
+    typer.secho(
+        f"    {pending} suggestions pending — review in `moi dashboard` (Approval queue).",
+        fg=typer.colors.GREEN,
+    )
+
+
 @app.command("weekly")
 def weekly(
     no_llm: bool = typer.Option(False, "--no-llm", help="Numbers-only report (skip agents)."),

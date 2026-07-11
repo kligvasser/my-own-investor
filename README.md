@@ -71,8 +71,9 @@ Full setup (IBKR gateway, API keys, nightly/weekly scheduling): **[docs/SETUP.md
 
 | Command | What it does |
 |---|---|
+| `moi run` | **The one-shot:** collect all data → report + suggestions → urgent triggers |
 | `moi collect all` | Refresh every data source (nightly job) |
-| `moi weekly [--collect]` | Full pipeline → suggestions + markdown report |
+| `moi weekly [--collect]` | Report pipeline only (what `moi run` wraps) |
 | `moi dashboard` | Streamlit UI: report, approval queue, holdings performance, whales, trends |
 | `moi ml scores` / `moi ml train` | Latest ranking / composite-vs-challenger evaluation |
 | `moi backtest run` | Walk-forward backtest vs baselines (gated) |
