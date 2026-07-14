@@ -172,11 +172,19 @@ mode). Multi-agent design inspired by [TradingAgents](https://github.com/TauricR
 | **Fundamental analyst** | reads new filings/transcripts for top candidates & holdings, writes/updates thesis per position |
 | **Whale watcher** | diffs 13F/congress/insider data, writes "whale moves" section |
 | **Macro/trends analyst** | Polymarket + macro correlations, regime narrative |
-| **Bear (red team)** | argues *against* every proposed buy; objections go in the report |
+| **Bear (red team)** | argues the *other* side of every proposed action: objections against buys, the give-up case against sells |
+| **Risk officer** | grades every proposed action strong/moderate/weak by how many independent signals agree; the grade lands in the queue's `confidence` field |
+| **Exit reviewer** | sell-side sweep of every *held* position — KEEP/WATCH/EXIT verdicts, so deteriorating holdings surface even when the diff proposes nothing |
 | **Portfolio manager** | merges all inputs → final action list with sizes, rationale, confidence; queues for approval |
 
-**Weekly run (Sat 09:00):** collect → features → ML → agents → report → dashboard +
-notification. **Urgent watcher (daily 17:30 ET, ~2 min):** checks triggers — holding moves
+**Ordering contract:** every signal digest (holdings, whales/insiders, macro,
+prediction markets, news) is assembled into one bundle *before* any agent runs, and
+every agent receives that full bundle with the proposed actions listed last — so
+theses, bear cases, confidence grades, and exit verdicts are always judgments over
+the complete picture, never over a single feed.
+
+**Weekly run (Sat 09:00):** collect → features → ML → signal bundle → agents →
+report → dashboard + notification. **Urgent watcher (daily 17:30 ET, ~2 min):** checks triggers — holding moves
 >±12% in a day, earnings surprise, new whale filing touching a holding, stop/thesis-break
 level hit, Polymarket event probability jumps >20pts — and if fired, runs a mini-report and
 pushes an alert.
@@ -207,7 +215,8 @@ grouped into three sections:
    (broker, EDGAR, FRED, congress, agents, scheduler, trading mode) with green/red
    per dependency; data-source freshness merged with each collector's last run;
    recent run history
-2. **Weekly report** — this week's narrative and action cards, downloadable
+2. **Weekly report** — this week's narrative, action cards, and holdings exit
+   review; downloadable as markdown or self-contained phone-friendly HTML
 3. **Approval queue** — pending suggestions with one-click approve/reject/snooze
    and the approximate dollar size of each trade
 
@@ -229,7 +238,9 @@ Because DuckDB is single-writer, the dashboard never runs pipeline code in-proce
 Mission control launches one background job at a time, and data pages degrade to a
 "database busy" notice while a job holds the write lock.
 
-The weekly report is also rendered to markdown/HTML and delivered by email/Telegram.
+The weekly report is written as markdown plus a self-contained HTML twin
+(`src/moi/report/html.py`: responsive, dark-mode aware, no external assets — built
+to read well on a phone) and delivered by email/Telegram.
 
 ## 10. Related work (what we borrow, what we avoid)
 

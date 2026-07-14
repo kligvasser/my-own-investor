@@ -44,6 +44,27 @@ next phase starts.
 >   codes; cancel/force-clear; lock-wait for scheduled jobs; alert dedup +
 >   stuck-order/stale-approval triggers), and gitleaks pre-commit scanning.
 >   Tests 69 → 105.
+>
+> **Post-plan additions (2026-07-14) — weekly report v2:**
+> - **Signal-first ordering contract** (`src/moi/report/weekly.py`): every digest
+>   (holdings, whales/insiders, macro, Polymarket, news) is assembled into one
+>   bundle *before* any agent runs; every agent receives the full bundle with the
+>   proposed actions listed last. Previously theses were written from actions +
+>   news alone.
+> - **Sell-side assessment:** new `risk` agent grades each action
+>   strong/moderate/weak (stored in `suggestions.confidence`, shown in queue and
+>   report); new `exit` agent issues KEEP/WATCH/EXIT on every held position,
+>   backed by a deterministic `holdings_digest` (composite rank, in/out of target,
+>   90-day insider net sells, unrealized P&L). Analyst/bear prompts are
+>   direction-aware: SELL/TRIM rows get an exit thesis and the bear argues what
+>   selling gives up.
+> - **Report layout:** compact action table (score + confidence) with per-ticker
+>   detail blocks (thesis / bear case / risk vet) replacing the mega-table; new
+>   "Holdings review — sell side" section with a collapsible signal-data appendix.
+> - **Phone-friendly HTML:** `src/moi/report/html.py` renders each report to a
+>   self-contained `reports/YYYY-Wnn.html` (responsive, dark-mode aware, no
+>   external assets); the dashboard offers Markdown and HTML downloads and renders
+>   legacy reports on the fly. New dep: `markdown`. Tests 105 → 112.
 
 **Working conventions (all phases):**
 - Environment: conda via [`environment.yaml`](../environment.yaml); package installed

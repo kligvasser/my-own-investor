@@ -22,10 +22,22 @@ def weekly_report() -> None:
     if not reports:
         st.info("No reports yet — run **Full pipeline** from Mission control.")
         return
-    left, right = st.columns([3, 1])
+    left, mid, right = st.columns([3, 1, 1])
     pick = left.selectbox("Report", [p.name for p in reports], label_visibility="collapsed")
-    text = (ROOT / "reports" / pick).read_text()
-    right.download_button("Download", text, file_name=pick, width="stretch")
+    md_path = ROOT / "reports" / pick
+    text = md_path.read_text()
+    mid.download_button("Markdown", text, file_name=pick, width="stretch")
+    # HTML is written by the pipeline; render on the fly for reports that predate it.
+    html_path = md_path.with_suffix(".html")
+    if html_path.exists():
+        html = html_path.read_text()
+    else:
+        from moi.report.html import render_html
+
+        html = render_html(text, title=md_path.stem)
+    right.download_button(
+        "HTML (phone)", html, file_name=html_path.name, mime="text/html", width="stretch"
+    )
     st.markdown(text)
 
 

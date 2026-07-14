@@ -41,6 +41,7 @@ dependencies:
       - streamlit
       - plotly
       - jinja2                # weekly report templates (md/html)
+      - markdown              # weekly report md → phone-friendly standalone html
 
       # --- CLI / config / logging ---
       - typer

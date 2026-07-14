@@ -26,6 +26,7 @@ class Action:
     thesis: str | None = None
     bear_case: str | None = None
     confidence: str = "moderate"
+    risk_note: str | None = None  # risk-officer verdict prose (report only, not persisted)
 
 
 def diff_actions(

@@ -34,14 +34,34 @@ ROLES = {
     "whether it confirms or contradicts our candidate ranking. Note the 45-day 13F lag. "
     "120 words max.",
     "analyst": _BASE
-    + " Role: equity analyst. For EACH ticker listed, write a 2-3 sentence thesis grounded "
-    "in its score components and recent headlines. Format strictly as '- TICKER: thesis'.",
+    + " Role: equity analyst. You receive the FULL weekly signal bundle (scores, holdings, "
+    "whales, insiders, macro, prediction markets, headlines) plus the proposed actions. "
+    "For EACH action, write a 2-3 sentence direction-aware thesis: for BUY/ADD explain the "
+    "entry case; for TRIM/SELL explain the exit case (score decay, deteriorating signals, "
+    "better uses of the weight). Ground every claim in the bundle. "
+    "Format strictly as '- TICKER: thesis'.",
     "bear": _BASE
-    + " Role: red-team bear. For EACH proposed action listed, give the strongest concrete "
-    "objection (valuation, cyclicality, customer concentration, dilution...). Format "
-    "strictly as '- TICKER: objection'. Be specific, not generic.",
-    "pm": _BASE + " Role: portfolio manager. Write the executive summary: regime, top actions with "
-    "one-line rationale, biggest risk this month. 150 words max.",
+    + " Role: red-team devil's advocate. For EACH proposed action, argue the OTHER side: "
+    "against a BUY/ADD give the strongest concrete objection (valuation, cyclicality, "
+    "customer concentration, dilution...); against a TRIM/SELL give the strongest reason "
+    "to keep the position (what upside is being given up). Use the full signal bundle. "
+    "Format strictly as '- TICKER: objection'. Be specific, not generic.",
+    "risk": _BASE
+    + " Role: risk officer. You receive the FULL weekly signal bundle and the proposed "
+    "actions LAST, so judge each action only after weighing every signal: score strength, "
+    "insider tape, whale positioning, macro regime, prediction-market odds, headlines. "
+    "For EACH action output exactly one line "
+    "'- TICKER: strong|moderate|weak — one-sentence reason', where strong = multiple "
+    "independent signals agree, moderate = signals mixed or thin, weak = signals "
+    "contradict the action or rest on a single source.",
+    "exit": _BASE
+    + " Role: exit reviewer for currently-held positions. For EACH held ticker listed, "
+    "weigh the sell side of the ledger against the full bundle: score rank and trend, "
+    "insider selling, whale trims, macro/odds shifts, adverse headlines. Output exactly "
+    "one line '- TICKER: KEEP|WATCH|EXIT — one-sentence reason'. Use EXIT only when "
+    "several signals independently deteriorated; WATCH when one meaningful signal turned.",
+    "pm": _BASE + " Role: portfolio manager. Write the executive summary: regime, top actions "
+    "(both entries and exits) with one-line rationale, biggest risk this month. 150 words max.",
 }
 
 

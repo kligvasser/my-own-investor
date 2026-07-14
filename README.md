@@ -17,10 +17,11 @@ explicit per-order approval** — and a stack of hard-coded safety rails beneath
 nightly            weekly (Saturday)                            you
 ───────            ─────────────────────────────────────────    ──────────────
 collectors   ──►   features ──► composite score ──► portfolio   dashboard:
-prices, 13F,       (point-in-time, leakage-tested)  (regime-    review thesis
-insiders,                                            scaled,    + bear case,
-Polymarket,        Claude agents: analyst theses,    sector     approve/reject
-news, FRED         red-team bear cases, PM summary   caps)      → moi execute
+prices, 13F,       (point-in-time, leakage-tested)  (regime-    review thesis,
+insiders,                                            scaled,    bear case &
+Polymarket,        full signal bundle ──► agents:    sector     risk grade,
+news, FRED         theses, bear cases, risk vet,     caps)      approve/reject
+                   holdings exit review, PM summary             → moi execute
 ```
 
 - **Data** — daily prices (yfinance/IBKR), whale 13F holdings with quarter-over-quarter
@@ -32,14 +33,21 @@ news, FRED         red-team bear cases, PM summary   caps)      → moi execute
   purged walk-forward evaluation; a LightGBM challenger is evaluated alongside and gets
   promoted only if it beats the composite out-of-sample (so far it hasn't — by a lot).
 - **Judgment** — LLM agents (Claude Agent SDK) narrate and critique the numbers; they
-  never compute them and have no trading tools. Every suggestion carries a thesis *and*
-  a specific bear-case objection.
+  never compute them and have no trading tools. Every digest (holdings, whales,
+  insiders, macro, prediction markets, news) is assembled into one signal bundle
+  *before* any agent runs, so every judgment weighs the complete picture. Each
+  proposed action — buys **and** sells — carries a direction-aware thesis, a specific
+  bear-case objection, and a risk-officer confidence grade (strong/moderate/weak);
+  every *held* position additionally gets a KEEP/WATCH/EXIT review each week, so
+  deteriorating holdings are flagged even when the quant diff proposes nothing.
 - **Execution** — approval queue → `moi execute` places limit-GTC orders. Paper accounts
   by default; live trading requires an explicit `MOI_ALLOW_LIVE` opt-in and still passes
   every rail below on each order.
 - **Accountability** — the dashboard tracks the real account: per-holding P&L and
   trailing returns (1W–1Y) vs SPY, plus a journal of every suggestion, decision, and
-  order ever made.
+  order ever made. The weekly report ships as markdown **and** a self-contained,
+  phone-friendly HTML file (dark-mode aware, no external assets) — downloadable from
+  the dashboard or straight out of `reports/`.
 - **Operations** — a Mission Control page shows every connection (broker, EDGAR, FRED,
   agents, scheduler) green/red, a data-freshness board, and one-click buttons that run
   the pipeline as background jobs with a live log.

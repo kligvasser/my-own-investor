@@ -83,9 +83,15 @@ def build_portfolio(
     *,
     top_n: int = 12,
     max_sector_share: float = 0.30,
+    ranked: pd.DataFrame | None = None,
 ) -> TargetPortfolio:
-    """Latest scores + regime → equal-weight target portfolio under constraints."""
-    ranked = latest_scores(con)
+    """Latest scores + regime → equal-weight target portfolio under constraints.
+
+    ``ranked`` lets callers that already hold the latest ranking (the weekly report
+    needs the full list for its holdings review) skip a second scoring pass.
+    """
+    if ranked is None:
+        ranked = latest_scores(con)
     if ranked.empty:
         raise RuntimeError("No scores available — run `moi features build` first.")
     sectors = dict(
